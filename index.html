@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html>
+  <!-- 
+  https://github.com/GoogleChromeLabs/webm-wasm/blob/master/demo/simple.html
+  https://github.com/GoogleChromeLabs/webm-wasm/blob/master/LICENSE
+-->
+
+  <head> </head>
+
+  <body>
+    <video></video>
+    <br />
+    <button id="go">Produce Webm video</button>
+    <script>
+      (async () => {
+        const buffer = await fetch(
+          "https://unpkg.com/webm-wasm/dist/webm-worker.js"
+        ).then((r) => r.arrayBuffer());
+        const worker = new Worker(
+          URL.createObjectURL(
+            new Blob([buffer], {
+              type: "text/javascript"
+            })
+          )
+        );
+        worker.postMessage(
+          "https://unpkg.com/webm-wasm@0.4.1/dist/webm-wasm.wasm"
+        );
+        worker.onmessage = (e) => console.log(e);
+        const framerate = 30;
+        const bitrate = 200;
+        const canvas = document.createElement("canvas");
+        [canvas.width, canvas.height] = [50, 50];
+        const ctx = canvas.getContext("2d");
+        // Returns the next <name> event of `target`.
+        function nextEvent(target, name) {
+          return new Promise((resolve) => {
+            target.addEventListener(name, resolve, {
+              once: true
+            });
+          });
+        }
+        async function init() {
+          worker.postMessage({
+            timebaseDen: framerate,
+            width: 300,
+            height: 300,
+            bitrate
+          });
+          const imageData = [
+            {
+              width: 300,
+              height: 300,
+              fillStyle: "green"
+            },
+            {
+              width: 300,
+              height: 300,
+              fillStyle: "yellow"
+            },
+            {
+              width: 300,
+              height: 300,
+              fillStyle: "red"
+            }
+          ];
+          const segments = 60;
+          for (const { width, height, fillStyle } of imageData) {
+            canvas.width = width;
+            canvas.height = height;
+
+            console.log(canvas.width, canvas.height);
+
+            await new Promise(async (resolve) => {
+              for (let i = 0; i < segments; i++) {
+                await new Promise((promise) =>
+                  requestAnimationFrame(function draw() {
+                    ctx.clearRect(0, 0, width, height);
+                    ctx.fillStyle = fillStyle;
+                    ctx.fillRect(0, 0, width, height);
+                    const { buffer } = ctx.getImageData(
+                      0,
+                      0,
+                      width,
+                      height
+                    ).data;
+                    worker.postMessage(buffer, [buffer]);
+                    promise();
+                  })
+                );
+              }
+              resolve();
+            });
+          }
+
+          worker.postMessage(null);
+          const webm = (await nextEvent(worker, "message")).data;
+          const webm_wasm_blob = new Blob([webm], {
+            type: "video/webm"
+          });
+          const webm_wasm_url = URL.createObjectURL(webm_wasm_blob);
+          const webm_wasm_video = document.getElementsByTagName("video")[0];
+          console.log(webm_wasm_video);
+          const videoSettings = {
+            autopplay: true,
+            loop: true,
+            muted: true,
+            controls: true
+          };
+          Object.assign(webm_wasm_video, videoSettings);
+          Object.assign(webm_wasm_video, videoSettings);
+          webm_wasm_video.src = webm_wasm_url;
+          webm_wasm_video.play();
+        }
+        go.onclick = (ev) => {
+          ev.target.remove();
+          init();
+        };
+      })();
+    </script>
+  </body>
+</html>
